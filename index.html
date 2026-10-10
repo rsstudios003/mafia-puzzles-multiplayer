@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mafia Puzzles — Team Rooms</title>
+  <style>
+    :root {
+      --bg: #0b1b2e;
+      --panel: rgba(17, 22, 38, 0.9);
+      --accent: #ffd23f;
+      --text: #eef5ff;
+      --muted: #b8c7e0;
+      --good: #49d77a;
+      --danger: #ff6b6b;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+      overflow: hidden;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .app {
+      width: min(1000px, 100%);
+      background: var(--panel);
+      border-radius: 18px;
+      box-shadow: 0 20px 65px rgba(0,0,0,0.4);
+      border: 1px solid rgba(255,255,255,0.08);
+      padding: 24px;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    h1 {
+      margin: 0 0 8px;
+      color: var(--accent);
+      letter-spacing: 1px;
+    }
+    .sub {
+      color: var(--muted);
+      margin-bottom: 18px;
+    }
+    .row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    input, button {
+      border: 0;
+      border-radius: 10px;
+      font: inherit;
+    }
+    input {
+      padding: 12px 14px;
+      background: #1d2d45;
+      color: var(--text);
+      min-width: 180px;
+      flex: 1;
+    }
+    button {
+      background: var(--accent);
+      color: #111;
+      font-weight: 800;
+      padding: 12px 16px;
+      cursor: pointer;
+    }
+    button.secondary {
+      background: #1d2d45;
+      color: var(--text);
+    }
+    button.team-btn {
+      flex: 1;
+      min-width: 140px;
+      padding: 14px;
+      font-size: 14px;
+      text-align: center;
+    }
+    .status {
+      background: rgba(255,255,255,0.04);
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin-top: 14px;
+      color: var(--muted);
+      min-height: 48px;
+    }
+    .teams-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 14px;
+      margin-top: 16px;
+    }
+    .team-card {
+      background: rgba(255,255,255,0.04);
+      border: 2px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      padding: 14px;
+      color: var(--text);
+      transition: all 0.2s;
+    }
+    .team-card.active {
+      border-color: var(--accent);
+      background: rgba(255,210,63,0.1);
+    }
+    .team-name {
+      font-weight: 800;
+      font-size: 16px;
+      margin-bottom: 8px;
+    }
+    .team-players {
+      background: rgba(0,0,0,0.3);
+      border-radius: 8px;
+      padding: 8px;
+      min-height: 60px;
+    }
+    .player-item {
+      padding: 6px 8px;
+      background: rgba(255,255,255,0.06);
+      border-radius: 6px;
+      margin-bottom: 4px;
+      font-size: 13px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .player-item:last-child {
+      margin-bottom: 0;
+    }
+    .player-name {
+      font-weight: 600;
+    }
+    .player-stats {
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .empty-team {
+      color: var(--muted);
+      font-style: italic;
+      padding: 12px 0;
+      text-align: center;
+    }
+    .good { color: var(--good); }
+    .danger { color: var(--danger); }
+    .tiny {
+      color: var(--muted);
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <h1>Mafia Puzzles</h1>
+    <div class="sub">Choose your team and play with teammates in the same room.</div>
+
+    <div class="row">
+      <input id="nameInput" type="text" maxlength="16" placeholder="Your name" value="Player" />
+      <input id="roomInput" type="text" maxlength="10" placeholder="Room code" value="" />
+      <button id="createBtn">Create Room</button>
+      <button id="joinBtn" class="secondary">Join Room</button>
+    </div>
+
+    <div class="row">
+      <button id="shareBtn" class="secondary">Copy Invite Link</button>
+      <button id="syncBtn" class="secondary">Force Sync</button>
+    </div>
+
+    <div class="status" id="status">Waiting for room setup...</div>
+
+    <div id="teamSection" hidden>
+      <h2 style="color: var(--accent); margin-top: 20px;">Choose Your Team</h2>
+      <div class="teams-grid" id="teamsGrid"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    // Firebase configuration - replace with your project values
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT.firebaseapp.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT.appspot.com",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
+    };
+
+    const TEAMS = [
+      { id: 0, name: "Thunder Wolves", color: "#2979ff" },
+      { id: 1, name: "Golden Eagles", color: "#ffc107" },
+      { id: 2, name: "Night Panthers", color: "#8e24aa" },
+      { id: 3, name: "Fire Dragons", color: "#e53935" }
+    ];
+
+    const appState = {
+      roomCode: "",
+      playerId: crypto.randomUUID ? crypto.randomUUID() : `p-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      db: null,
+      roomRef: null,
+      unsub: null,
+      connected: false,
+      currentTeam: null,
+      allPlayers: {}
+    };
+
+    const ui = {
+      roomInput: document.getElementById("roomInput"),
+      nameInput: document.getElementById("nameInput"),
+      status: document.getElementById("status"),
+      teamsGrid: document.getElementById("teamsGrid"),
+      teamSection: document.getElementById("teamSection"),
+      createBtn: document.getElementById("createBtn"),
+      joinBtn: document.getElementById("joinBtn"),
+      shareBtn: document.getElementById("shareBtn"),
+      syncBtn: document.getElementById("syncBtn")
+    };
+
+    let firebaseReady = false;
+    let db = null;
+
+    function logStatus(message, type = "") {
+      ui.status.innerHTML = message;
+      ui.status.className = "status" + (type ? ` ${type}` : "");
+    }
+
+    function generateRoomCode() {
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      let value = "";
+      for (let i = 0; i < 6; i++) value += chars[Math.floor(Math.random() * chars.length)];
+      return value;
+    }
+
+    function getUrlRoomCode() {
+      const params = new URLSearchParams(window.location.search);
+      return (params.get("room") || "").toUpperCase();
+    }
+
+    function setRoomCode(code) {
+      appState.roomCode = code;
+      ui.roomInput.value = code;
+      const url = new URL(window.location.href);
+      url.searchParams.set("room", code);
+      window.history.replaceState({}, "", url);
+    }
+
+    function loadSavedName() {
+      const saved = localStorage.getItem("mafiaPuzzlesName");
+      if (saved) ui.nameInput.value = saved;
+    }
+
+    function saveName() {
+      localStorage.setItem("mafiaPuzzlesName", ui.nameInput.value.trim() || "Player");
+    }
+
+    async function initFirebase() {
+      if (firebaseReady) return;
+
+      const configIsValid = firebaseConfig.apiKey && firebaseConfig.apiKey !== "YOUR_API_KEY";
+      if (!configIsValid) {
+        logStatus("Firebase not configured. Replace the config in this file with your project values.", "danger");
+        return;
+      }
+
+      const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js");
+      const { getFirestore, doc, setDoc, getDoc, onSnapshot, updateDoc, serverTimestamp, collection, getDocs, query, where } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+
+      const app = initializeApp(firebaseConfig);
+      db = getFirestore(app);
+      appState.db = db;
+      firebaseReady = true;
+      logStatus("Firebase connected. Ready to create or join a room.");
+
+      const roomCodeFromUrl = getUrlRoomCode();
+      if (roomCodeFromUrl) {
+        setRoomCode(roomCodeFromUrl);
+      }
+    }
+
+    function getRoomDocRef() {
+      if (!db) return null;
+      return doc(db, "mafiaPuzzlesRooms", appState.roomCode);
+    }
+
+    async function createRoom() {
+      await initFirebase();
+      if (!db) return;
+
+      const roomCode = ui.roomInput.value.trim().toUpperCase() || generateRoomCode();
+      setRoomCode(roomCode);
+
+      const roomRef = getRoomDocRef();
+      const snapshot = await getDoc(roomRef);
+      if (!snapshot.exists()) {
+        await setDoc(roomRef, {
+          roomCode,
+          createdAt: serverTimestamp(),
+          teams: {}
+        }, { merge: true });
+      }
+
+      await joinRoom();
+    }
+
+    async function joinRoom() {
+      await initFirebase();
+      if (!db) return;
+
+      const roomCode = ui.roomInput.value.trim().toUpperCase();
+      if (!roomCode) {
+        logStatus("Type a room code or click Create Room.", "danger");
+        return;
+      }
+
+      setRoomCode(roomCode);
+      const roomRef = getRoomDocRef();
+      if (!roomRef) {
+        logStatus("Firebase not ready yet.", "danger");
+        return;
+      }
+
+      const snapshot = await getDoc(roomRef);
+      if (!snapshot.exists()) {
+        logStatus("This room does not exist yet. Create it first.", "danger");
+        return;
+      }
+
+      appState.roomRef = roomRef;
+      const name = (ui.nameInput.value || "Player").trim() || "Player";
+      saveName();
+
+      appState.connected = true;
+      ui.teamSection.hidden = false;
+      logStatus(`Joined room <strong>${roomCode}</strong>. Choose your team.`, "good");
+      subscribeToRoom();
+    }
+
+    function subscribeToRoom() {
+      if (!appState.roomRef || appState.unsub) return;
+
+      appState.unsub = onSnapshot(appState.roomRef, (snapshot) => {
+        const data = snapshot.data() || {};
+        const teams = data.teams || {};
+        appState.allPlayers = {};
+
+        // Flatten all players from all teams
+        Object.values(teams).forEach((team) => {
+          if (team.players) {
+            Object.assign(appState.allPlayers, team.players);
+          }
+        });
+
+        renderTeams(teams);
+      });
+    }
+
+    function renderTeams(teams) {
+      ui.teamsGrid.innerHTML = "";
+
+      TEAMS.forEach((teamDef) => {
+        const teamId = teamDef.id;
+        const teamData = teams[teamId] || { players: {} };
+        const players = teamData.players || {};
+        const playerList = Object.values(players);
+
+        const card = document.createElement("div");
+        card.className = "team-card";
+        if (appState.currentTeam === teamId) {
+          card.classList.add("active");
+        }
+
+        const nameEl = document.createElement("div");
+        nameEl.className = "team-name";
+        nameEl.style.color = teamDef.color;
+        nameEl.textContent = teamDef.name;
+
+        const playersDiv = document.createElement("div");
+        playersDiv.className = "team-players";
+
+        if (playerList.length === 0) {
+          const empty = document.createElement("div");
+          empty.className = "empty-team";
+          empty.textContent = "No players yet";
+          playersDiv.appendChild(empty);
+        } else {
+          playerList.forEach((p) => {
+            const pEl = document.createElement("div");
+            pEl.className = "player-item";
+            const isMe = p.id === appState.playerId ? " (You)" : "";
+            pEl.innerHTML = `
+              <div class="player-name">${escapeHtml(p.name || "Player")}${isMe}</div>
+              <div class="player-stats">Lvl ${p.state?.lvl ?? 1}</div>
+            `;
+            playersDiv.appendChild(pEl);
+          });
+        }
+
+        const selectBtn = document.createElement("button");
+        selectBtn.className = "team-btn secondary";
+        selectBtn.style.marginTop = "10px";
+        selectBtn.style.borderColor = teamDef.color;
+        selectBtn.textContent = appState.currentTeam === teamId ? "✓ Selected" : "Join Team";
+        selectBtn.onclick = () => selectTeam(teamId);
+
+        card.appendChild(nameEl);
+        card.appendChild(playersDiv);
+        card.appendChild(selectBtn);
+        ui.teamsGrid.appendChild(card);
+      });
+    }
+
+    async function selectTeam(teamId) {
+      if (!appState.roomRef || !firebaseReady) return;
+
+      const name = (ui.nameInput.value || "Player").trim() || "Player";
+      saveName();
+
+      const playerData = {
+        id: appState.playerId,
+        name,
+        team: teamId,
+        joinedAt: Date.now(),
+        lastSeen: Date.now(),
+        state: {
+          lvl: typeof window.P !== "undefined" ? (window.P.lvl ?? 1) : 1,
+          gems: typeof window.P !== "undefined" ? (window.P.gems ?? 0) : 0,
+          xp: typeof window.P !== "undefined" ? (window.P.xp ?? 0) : 0,
+          bars: typeof window.P !== "undefined" ? (window.P.bars ?? 20) : 20
+        }
+      };
+
+      // Build update payload: remove from old team, add to new team
+      const updatePayload = {};
+
+      // Remove from all other teams
+      TEAMS.forEach((t) => {
+        if (t.id !== teamId) {
+          updatePayload[`teams.${t.id}.players.${appState.playerId}`] = null;
+        }
+      });
+
+      // Add to selected team
+      updatePayload[`teams.${teamId}.players.${appState.playerId}`] = playerData;
+
+      try {
+        const { updateDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+        await updateDoc(appState.roomRef, updatePayload);
+        appState.currentTeam = teamId;
+        logStatus(`You joined <strong>${TEAMS[teamId].name}</strong>!`, "good");
+      } catch (err) {
+        console.error(err);
+        logStatus("Failed to join team. Try again.", "danger");
+      }
+    }
+
+    async function forceSync() {
+      if (!appState.roomRef) {
+        logStatus("Join a room before syncing.", "danger");
+        return;
+      }
+
+      try {
+        const { updateDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+
+        if (appState.currentTeam !== null) {
+          const playerData = {
+            id: appState.playerId,
+            name: (ui.nameInput.value || "Player").trim() || "Player",
+            team: appState.currentTeam,
+            state: {
+              lvl: typeof window.P !== "undefined" ? (window.P.lvl ?? 1) : 1,
+              gems: typeof window.P !== "undefined" ? (window.P.gems ?? 0) : 0,
+              xp: typeof window.P !== "undefined" ? (window.P.xp ?? 0) : 0,
+              bars: typeof window.P !== "undefined" ? (window.P.bars ?? 20) : 20
+            },
+            lastSeen: Date.now()
+          };
+
+          await updateDoc(appState.roomRef, {
+            [`teams.${appState.currentTeam}.players.${appState.playerId}`]: playerData
+          });
+        }
+
+        logStatus("Shared state synced successfully.", "good");
+      } catch (err) {
+        console.error(err);
+        logStatus("Sync failed. Check your Firebase config.", "danger");
+      }
+    }
+
+    function copyInviteLink() {
+      const roomCode = (ui.roomInput.value || appState.roomCode || getUrlRoomCode()).trim().toUpperCase();
+      if (!roomCode) {
+        logStatus("Create or join a room first.", "danger");
+        return;
+      }
+
+      const url = new URL(window.location.href);
+      url.searchParams.set("room", roomCode);
+      navigator.clipboard.writeText(url.toString()).then(() => {
+        logStatus(`Invite link copied!`, "good");
+      }).catch(() => {
+        logStatus(`Copy manually: ${url}`, "good");
+      });
+    }
+
+    function handleSharedStateTicker() {
+      if (!appState.roomRef || !firebaseReady || !window.P || appState.currentTeam === null) return;
+
+      const playerData = {
+        name: (ui.nameInput.value || "Player").trim() || "Player",
+        id: appState.playerId,
+        team: appState.currentTeam,
+        state: {
+          lvl: window.P.lvl ?? 1,
+          gems: window.P.gems ?? 0,
+          xp: window.P.xp ?? 0,
+          bars: window.P.bars ?? 20
+        },
+        lastSeen: Date.now()
+      };
+
+      if (!window.__syncTimer) {
+        window.__syncTimer = setTimeout(async () => {
+          window.__syncTimer = null;
+          if (appState.roomRef && firebaseReady) {
+            try {
+              const { updateDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+              await updateDoc(appState.roomRef, {
+                [`teams.${appState.currentTeam}.players.${appState.playerId}`]: playerData
+              });
+            } catch (err) {
+              // silent fail
+            }
+          }
+        }, 1500);
+      }
+    }
+
+    loadSavedName();
+    const roomFromUrl = getUrlRoomCode();
+    if (roomFromUrl) ui.roomInput.value = roomFromUrl;
+
+    ui.createBtn.onclick = createRoom;
+    ui.joinBtn.onclick = joinRoom;
+    ui.shareBtn.onclick = copyInviteLink;
+    ui.syncBtn.onclick = forceSync;
+
+    setInterval(() => {
+      handleSharedStateTicker();
+    }, 3000);
+
+    if (roomFromUrl) {
+      setTimeout(() => {
+        joinRoom();
+      }, 200);
+    }
+  </script>
+</body>
+</html>
